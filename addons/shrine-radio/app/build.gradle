@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.gathin.shrineradio'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.gathin.shrineradio'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+        debug {
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            def vName = variant.versionName
+            def bType = variant.buildType.name
+            outputFileName = "ShrineRadio_IraqiQuran_v${vName}_${bType}.apk"
+        }
+    }
+}
+
+dependencies {
+    // Zero bloat: pure standard Android SDK libraries for maximum speed on TV
+}

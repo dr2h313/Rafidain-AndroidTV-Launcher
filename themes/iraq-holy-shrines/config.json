@@ -1,0 +1,12 @@
+{
+    "background_color":  "#05070B",
+    "wallpaper_dim":  25,
+    "icon_only_buttons":  true,
+    "wallpaper":  true,
+    "dock_band":  true,
+    "app_glow":  true,
+    "columns":  5,
+    "dock_glass":  true,
+    "ambient_glow":  true,
+    "glass_style":  "glass"
+}
