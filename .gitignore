@@ -1,9 +1,17 @@
-# Android build outputs & caches
+# Keystores, signing keys & secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+key.properties
+signing.properties
+google-services.json
+
+# Build outputs & caches
 **/build/
 .gradle/
 .externalNativeBuild/
 .cxx/
-local.properties
 
 # Android Studio / IntelliJ IDEA
 .idea/
@@ -11,15 +19,37 @@ local.properties
 *.ipr
 *.iws
 
-# Keys & Secrets
-*.jks
-*.keystore
-key.properties
-signing.properties
+# Environment & local configurations
+local.properties
+.env
+.env.*
 
-# System & OS temp files
+# Logs & temp files
+*.log
 *.tmp
 *.bak
 Thumbs.db
 .DS_Store
-*.log
+
+# Temporary screenshots & experiment scripts
+*.png
+cleanyourtv/
+temp_urtv/
+backup_apollo_tv/
+cleanyourtv.zip
+check_hdo.py
+downloader.py
+get_onstream.py
+find_apks.py
+installed_skills_list.txt
+*.apk
+Rafidain-AndroidTV-Launcher.zip
+Rafidain-AndroidTV-Launcher/
+download_remote.py
+find_tv.py
+
+
+cleanyourtv_extracted/
+config.json
+/*.jpg
+
