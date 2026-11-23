@@ -99,6 +99,19 @@ calm-babbage/
 
 ---
 
+## 🖼️ مراجع تصميم الشاشة (Screen design references)
+
+الصور أدناه من مشروع التصميم السابق للتطوير، وتعرض مراجع تاريخية لشكل الشاشة الرئيسية والثيم. ليست لقطات ملتقطة من تشغيل الإصدار الحالي، ولا تؤكد تطابقه البصري النهائي.
+
+<p align="center">
+  <img src="docs/screenshots/legacy-screen-home.png" width="48%" alt="مرجع تاريخي لشاشة المشغّل قبل التطوير / Historical pre-development launcher home design">
+  <img src="docs/screenshots/legacy-tv-home-final.png" width="48%" alt="مرجع تاريخي لثيم التلفاز قبل التطوير / Historical pre-development TV theme design">
+</p>
+
+مصدر الصور وسياقها في [`docs/screenshots/README.md`](docs/screenshots/README.md).
+
+---
+
 ## ⚖️ الترخيص (License)
 المشروع مرخص تحت رخصة **Apache License 2.0** - حر ومفتوح المصدر للجميع.
 تم التطوير والإعداد بكل فخر لخدمة مستخدمي الشاشات الذكية في العراق والوطن العربي.

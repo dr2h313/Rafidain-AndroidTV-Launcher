@@ -33,6 +33,9 @@ Thumbs.db
 
 # Temporary screenshots & experiment scripts
 *.png
+# Curated historical launcher design references used by the README
+!docs/screenshots/legacy-screen-home.png
+!docs/screenshots/legacy-tv-home-final.png
 cleanyourtv/
 temp_urtv/
 backup_apollo_tv/
