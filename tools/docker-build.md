@@ -5,6 +5,11 @@ that has JDK 17, Android SDK 34 and build-tools 34.0.0. This computer needs Dock
 Android Studio, no `ANDROID_HOME`. The APK is built from this checkout, on this computer, and lands where a native
 build puts it.
 
+The launcher's release APK is versioned as
+`Rafidain_TV_HomeLauncher_v[version]_release.apk` under
+`launcher/app/build/outputs/apk/release/`. The launcher install scripts verify it and copy one
+English-named artifact into the ignored `release_builds/` directory before installing it.
+
 ## Build
 
 ```bash
