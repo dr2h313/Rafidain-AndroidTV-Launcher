@@ -28,7 +28,7 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all {
-            outputFileName = "CleanYourTV_HomeLauncher_v1.0.0.apk"
+            outputFileName = "Rafidain_TV_HomeLauncher_v${variant.versionName}_${variant.buildType.name}.apk"
         }
     }
 

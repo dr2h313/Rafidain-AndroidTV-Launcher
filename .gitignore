@@ -43,6 +43,7 @@ get_onstream.py
 find_apks.py
 installed_skills_list.txt
 *.apk
+/release_builds/
 Rafidain-AndroidTV-Launcher.zip
 Rafidain-AndroidTV-Launcher/
 download_remote.py

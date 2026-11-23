@@ -21,6 +21,7 @@ $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 if (-not $TvHost) { throw 'pass -TvHost <tv ip> or set $env:TV_HOST' }
 $env:TV_HOST = $TvHost
 Set-Location $PSScriptRoot
+$sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { "$env:LOCALAPPDATA\Android\Sdk" }
 
 # SKIP_BUILD=1 installs the APK already built (tools\docker-build.ps1 builds it in Docker, with no JDK here).
 if ($env:SKIP_BUILD -ne '1') {
@@ -30,18 +31,49 @@ if ($env:SKIP_BUILD -ne '1') {
         if (-not $jbr) { throw 'Set JAVA_HOME to a JDK 17+ (Android Studio ships one in its jbr folder)' }
         $env:JAVA_HOME = $jbr
     }
-    $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "$env:LOCALAPPDATA\Android\Sdk" }
     if (-not (Test-Path local.properties)) {
         "sdk.dir=$($sdk -replace '\\', '\\')" | Out-File -Encoding ascii local.properties
     }
 
     .\gradlew.bat assembleRelease -q --console=plain
     if ($LASTEXITCODE -ne 0) { throw 'Gradle build failed' }
-} elseif (-not (Test-Path 'app\build\outputs\apk\release\app-release.apk')) {
-    throw 'SKIP_BUILD=1 but there is no app\build\outputs\apk\release\app-release.apk; build it first (tools\docker-build.ps1)'
 }
 
 $py = '..\tools\venv\Scripts\python.exe'
+$buildConfig = Get-Content 'app\build.gradle' -Raw
+if ($buildConfig -notmatch "(?m)^\s*versionName\s+['""]([^'""]+)['""]") {
+    throw 'Could not determine versionName from app\build.gradle'
+}
+$versionName = $Matches[1]
+$apkName = "Rafidain_TV_HomeLauncher_v$($versionName)_release.apk"
+$apk = Join-Path 'app\build\outputs\apk\release' $apkName
+if (-not (Test-Path -LiteralPath $apk) -or (Get-Item -LiteralPath $apk).Length -eq 0) {
+    throw "Expected release APK was not produced: $apk (set SKIP_BUILD=1 only after building it)"
+}
+$zipCheck = & $py -I -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); sys.exit(0 if z.testzip() is None and 'AndroidManifest.xml' in z.namelist() else 1)" $apk
+if ($LASTEXITCODE -ne 0) { throw "APK archive validation failed: $apk" }
+$buildTools = Get-ChildItem (Join-Path $sdk 'build-tools') -Directory -ErrorAction SilentlyContinue |
+    Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+if ($buildTools) {
+    $aapt = Join-Path $buildTools.FullName 'aapt.exe'
+    if (Test-Path $aapt) {
+        $badging = & $aapt dump badging $apk
+        if ($LASTEXITCODE -ne 0 -or ($badging -join "`n") -notmatch "package: name='com\.gathin\.tvhome'") {
+            throw 'APK manifest does not declare the expected launcher package com.gathin.tvhome'
+        }
+    } else { Write-Warning 'aapt.exe is unavailable; APK package identity was not independently checked' }
+    $apksigner = Join-Path $buildTools.FullName 'apksigner.bat'
+    if (Test-Path $apksigner) {
+        & $apksigner verify $apk | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'APK signature verification failed' }
+    } else { Write-Warning 'apksigner.bat is unavailable; APK signature was not independently checked' }
+} else { Write-Warning 'Android build-tools are unavailable; APK package/signature checks were skipped' }
+$releaseDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'release_builds'
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+Copy-Item -LiteralPath $apk -Destination (Join-Path $releaseDir $apkName) -Force
+Write-Host "Validated APK: $apk"
+Write-Host "Release copy: $(Join-Path $releaseDir $apkName)"
+
 # Which app owns Home differs by build; ask the TV, but only accept a launcher we recognise (the answer
 # can also be Android's chooser "android", the setup wizard, or another third-party launcher).
 $knownStock = @('com.google.android.tvlauncher', 'com.google.android.apps.tv.launcherx', 'com.google.android.leanbacklauncher', 'com.mitv.tvhome')
@@ -65,7 +97,6 @@ if (-not $StockLauncher) {
 Write-Host "Stock launcher: $StockLauncher"
 $disableStock = if ($StockLauncher -eq 'none') { 'echo stock launcher left alone' } else { "pm disable-user --user 0 $StockLauncher" }
 
-$apk = 'app\build\outputs\apk\release\app-release.apk'
 & $py -I ..\tools\b64push.py $apk /data/local/tmp/tvhome.apk
 if ($LASTEXITCODE -ne 0) { throw 'APK upload failed' }
 $out = & $py -I ..\tools\tv.py 'pm install -r /data/local/tmp/tvhome.apk; rm -f /data/local/tmp/tvhome.apk'

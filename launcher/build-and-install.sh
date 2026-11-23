@@ -56,10 +56,46 @@ export PATH="$JAVA_HOME/bin:$PATH"
 # on it too. Forward slashes work everywhere.
 [ -f local.properties ] || echo "sdk.dir=$(printf '%s' "$ANDROID_HOME" | tr '\\' '/')" > local.properties
 ./gradlew assembleRelease -q --console=plain
-elif [ ! -f app/build/outputs/apk/release/app-release.apk ]; then
-  echo "ERROR: SKIP_BUILD=1 but there is no app/build/outputs/apk/release/app-release.apk; build it first (tools/docker-build.sh)." >&2
-  exit 1
 fi
+
+VERSION_NAME=$(sed -n "s/^[[:space:]]*versionName[[:space:]]*'\\([^']*\\)'.*/\\1/p" app/build.gradle | head -n 1)
+[ -n "$VERSION_NAME" ] || { echo "ERROR: could not determine versionName from app/build.gradle." >&2; exit 1; }
+APK_NAME="Rafidain_TV_HomeLauncher_v${VERSION_NAME}_release.apk"
+APK="app/build/outputs/apk/release/$APK_NAME"
+[ -s "$APK" ] || { echo "ERROR: expected release APK was not produced: $APK (SKIP_BUILD=1 requires this exact file)." >&2; exit 1; }
+"$PY" -I -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); sys.exit(0 if z.testzip() is None and "AndroidManifest.xml" in z.namelist() else 1)' "$APK" \
+  || { echo "ERROR: APK archive validation failed: $APK" >&2; exit 1; }
+
+if [ -z "${ANDROID_HOME:-}" ]; then
+  for d in ~/Library/Android/sdk ~/Android/Sdk /opt/homebrew/share/android-commandlinetools /usr/local/share/android-commandlinetools; do
+    [ -d "$d" ] && ANDROID_HOME="$d" && break
+  done
+fi
+SDK_PATH="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -n "$SDK_PATH" ] && command -v cygpath >/dev/null 2>&1; then SDK_PATH="$(cygpath -u "$SDK_PATH")"; fi
+AAPT=""
+if [ -n "$SDK_PATH" ] && [ -d "$SDK_PATH/build-tools" ]; then
+  AAPT=$(find "$SDK_PATH/build-tools" -type f \( -name aapt -o -name aapt.exe \) -print -quit 2>/dev/null || true)
+fi
+if [ -n "$AAPT" ]; then
+  BADGING=$("$AAPT" dump badging "$APK") || { echo "ERROR: aapt could not inspect the generated APK." >&2; exit 1; }
+  printf '%s\n' "$BADGING" | grep -q "^package: name='com.gathin.tvhome'" \
+    || { echo "ERROR: generated APK does not declare package com.gathin.tvhome." >&2; exit 1; }
+  APKSIGNER="$(dirname "$AAPT")/apksigner"
+  [ -f "$APKSIGNER.bat" ] && APKSIGNER="$APKSIGNER.bat"
+  if [ -f "$APKSIGNER" ]; then
+    "$APKSIGNER" verify "$APK" || { echo "ERROR: APK signature verification failed." >&2; exit 1; }
+  else
+    echo "WARNING: apksigner unavailable; signature was not independently verified." >&2
+  fi
+else
+  echo "WARNING: Android build-tools unavailable; APK package/signature checks were skipped." >&2
+fi
+mkdir -p ../release_builds
+cp "$APK" "../release_builds/$APK_NAME"
+echo "Validated APK: $APK"
+echo "Release copy: ../release_builds/$APK_NAME"
+
 # Which app owns Home differs by build (com.google.android.tvlauncher on Android TV,
 # com.google.android.apps.tv.launcherx on newer Google TV), so ask the TV instead of guessing.
 # Only a launcher we recognise is accepted: the answer can also be Android's chooser ("android"),
@@ -105,7 +141,6 @@ echo "Stock launcher: $STOCK_LAUNCHER"
 HOME_QUERY='cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
 if [ "$STOCK_LAUNCHER" = none ]; then DISABLE_STOCK="echo stock launcher left alone"
 else DISABLE_STOCK="pm disable-user --user 0 $STOCK_LAUNCHER"; fi
-APK=app/build/outputs/apk/release/app-release.apk
 "$PY" -I ../tools/b64push.py "$APK" /data/local/tmp/tvhome.apk
 # Install on its own: in the batch below a failed install (e.g. "not enough space" on a full /data)
 # would not stop the stock launcher from being disabled.
