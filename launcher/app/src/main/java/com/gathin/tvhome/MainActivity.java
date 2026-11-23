@@ -685,6 +685,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int rowsBelowDock = cfg.rowsBelowDock;
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int h = b - t;
+            // Keep the bottom scroll margin empty instead of drawing a clipped sliver of the next row into it.
+            grid.setClipBounds(new Rect(0, 0, r - l, Math.max(0, h - grid.getPaddingBottom())));
             // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
             int inner = (r - l) - grid.getPaddingLeft() - grid.getPaddingRight();
             int tileW = AppAdapter.tileWidthPx(inner, h, COLUMNS, rowsBelowDock, cfg.dockTitle, cfg.dockRow, density);
@@ -906,12 +908,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             List<View> pills = new ArrayList<>(Arrays.asList(btnInputs, btnWifi, btnVpn, btnReorder, btnLibraryTop, btnSettings));
             pills.addAll(topAppButtons);
             for (View button : pills) {
-                button.setOnFocusChangeListener((view, focused) -> view.animate()
+                addFocusListener(button, (view, focused) -> view.animate()
                         .scaleX(focused ? 1.04f : 1f).scaleY(focused ? 1.04f : 1f)
                         .setDuration(reducedMotion ? Motion.REDUCED_MS : 160).start());
             }
         }
         if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
+        addIconFocusLabels(btnSettings, btnToolbox, cfg.iconOnlyInputs);
 
         // Hide the glass when focus leaves the tiles.
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalFocusChangeListener((oldF, newF) -> {
@@ -2927,6 +2930,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (wifiIconOnly) {
             btnWifi.setContentDescription(btnWifi.getText());
             btnWifi.setText(null);
+            if (btnWifi.hasFocus()) showIconFocusLabel(btnWifi);
         }
         if (festive && lamp != null) {
             if (online && flame == 0) flame = 3;   // online some other way (cellular, USB tethering)
@@ -2977,6 +2981,56 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         pill.getLayoutParams().width = Math.round(42 * density);
     }
 
+    private void addIconFocusLabels(View settings, View toolbox, boolean iconOnlyInputs) {
+        List<View> buttons = new ArrayList<>();
+        if (iconOnlyButtons || topMenu) buttons.add(settings);
+        if (wifiIconOnly) buttons.add(btnWifi);
+        if (iconOnlyInputs) buttons.add(btnInputs);
+        if (iconOnlyVpn) buttons.add(btnVpn);
+        buttons.add(btnReorder);
+        buttons.add(btnLibraryTop);
+        if (toolbox != null) buttons.add(toolbox);
+        buttons.addAll(topAppButtons);
+        for (View button : buttons) {
+            addFocusListener(button, (view, focused) -> showIconFocusLabel((TextView) view, focused));
+        }
+    }
+
+    private void showIconFocusLabel(TextView button) {
+        showIconFocusLabel(button, true);
+    }
+
+    private void showIconFocusLabel(TextView button, boolean focused) {
+        if (focused) {
+            CharSequence label = button.getContentDescription();
+            if (TextUtils.isEmpty(label)) return;
+            button.setText(label);
+            button.setMaxWidth(Math.round(180 * density));
+            button.setSingleLine(true);
+            button.setEllipsize(TextUtils.TruncateAt.END);
+            button.setPaddingRelative(Math.round(16 * density), button.getPaddingTop(),
+                    Math.round(20 * density), button.getPaddingBottom());
+            button.setCompoundDrawablePadding(Math.round(9 * density));
+            button.getLayoutParams().width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        } else {
+            button.setText(null);
+            button.setMaxWidth(Integer.MAX_VALUE);
+            button.setPaddingRelative(Math.round(10 * density), button.getPaddingTop(),
+                    Math.round(10 * density), button.getPaddingBottom());
+            button.setCompoundDrawablePadding(0);
+            button.getLayoutParams().width = Math.round(42 * density);
+        }
+        button.requestLayout();
+    }
+
+    private static void addFocusListener(View view, View.OnFocusChangeListener listener) {
+        View.OnFocusChangeListener previous = view.getOnFocusChangeListener();
+        view.setOnFocusChangeListener((v, focused) -> {
+            if (previous != null) previous.onFocusChange(v, focused);
+            listener.onFocusChange(v, focused);
+        });
+    }
+
     // ---- festive skin ------------------------------------------------------------------------------
 
     /**
@@ -3023,9 +3077,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** Runs {@code action} when the view gains focus, keeping any focus listener it already had. */
     private static void addFocusAction(View view, Runnable action) {
-        View.OnFocusChangeListener previous = view.getOnFocusChangeListener();
-        view.setOnFocusChangeListener((v, focused) -> {
-            if (previous != null) previous.onFocusChange(v, focused);
+        addFocusListener(view, (v, focused) -> {
             if (focused) action.run();
         });
     }
