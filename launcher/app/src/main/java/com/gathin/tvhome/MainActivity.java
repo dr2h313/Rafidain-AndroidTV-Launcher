@@ -410,6 +410,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             updateClockVisibility();
         }
     };
+    private final IntentFilter screenFilter = new IntentFilter() {{
+        addAction(Intent.ACTION_SCREEN_OFF);
+        addAction(Intent.ACTION_SCREEN_ON);
+    }};
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
+                wallpaperLeftForeground = true;
+            } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && resumed
+                    && !suppressWallpaperTransition) {
+                wallpaperPlayer.rotateOnForeground();
+                wallpaperLeftForeground = false;
+            }
+        }
+    };
     private final Runnable minuteTick = new Runnable() {
         @Override
         public void run() {
@@ -428,10 +444,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** clock_format, for the race panel's session times (the TextClocks take it in onCreate). */
     private String clockFormat = "system";
     private java.util.Map<Integer, String> homeHoldAppKeys = java.util.Collections.emptyMap();
+    private boolean wallpaperFirstResume = true;
+    private boolean wallpaperLeftForeground;
+    private boolean suppressWallpaperTransition;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        wallpaperFirstResume = savedInstanceState == null;
         setContentView(R.layout.activity_main);
         density = getResources().getDisplayMetrics().density;
         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
@@ -483,7 +503,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // black under it is a second full-screen fill on every frame for nothing. The starting window still uses
         // the theme's background, so launch looks the same.
         getWindow().setBackgroundDrawable(null);
-        wallpaperPlayer = new WallpaperPlayer(this, root, cfg);
+        wallpaperPlayer = new WallpaperPlayer(this, root, cfg, savedInstanceState == null);
         sky = findViewById(R.id.sky);
         sky.setIntensity(cfg.skyIntensity);
         glass = findViewById(R.id.glass);
@@ -813,6 +833,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             ((TextView) btnSettings).setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_home_settings_pill, 0, 0, 0);
         }
         btnSettings.setOnClickListener(v -> {
+            suppressWallpaperTransition = true;
             if (launcherSettingsButton) startActivityForResult(
                     new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST);
             else open(systemIntent(Settings.ACTION_SETTINGS));
@@ -1006,6 +1027,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean openLauncherSettingsIfAsked(Intent intent) {
         if (intent == null || !ACTION_LAUNCHER_SETTINGS.equals(intent.getAction())) return false;
         setIntent(new Intent(Intent.ACTION_MAIN));
+        suppressWallpaperTransition = true;
         startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST);
         return true;
     }
@@ -1041,8 +1063,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         started = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(timeReceiver, timeFilter, Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(screenReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(timeReceiver, timeFilter);
+            registerReceiver(screenReceiver, screenFilter);
         }
         updateClockVisibility();
         tileRefresh.onStart();
@@ -1101,7 +1125,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         TvCareHelper.applyNightAutoDimming(root);
         if (gameDay != null) gameDay.start();
         sky.update();
-        wallpaperPlayer.start();
+        boolean rotateWallpaper = WallpaperLifecycle.shouldRotateOnResume(
+                wallpaperFirstResume, wallpaperLeftForeground, suppressWallpaperTransition);
+        wallpaperFirstResume = false;
+        wallpaperLeftForeground = false;
+        suppressWallpaperTransition = false;
+        wallpaperPlayer.start(rotateWallpaper);
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (festive && lamp != null) {
             lamp.start();
@@ -1275,6 +1304,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         cancelHoldOk();
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
+        wallpaperLeftForeground = true;
         wallpaperPlayer.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
@@ -1299,6 +1329,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onStop();
         started = false;
         unregisterReceiver(timeReceiver);
+        unregisterReceiver(screenReceiver);
         handler.removeCallbacks(clockCheck);
         stopped = true;
         tileRefresh.onStop();
@@ -1367,6 +1398,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         for (int code : settingsKeycodes) {
             if (event.getKeyCode() != code) continue;
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                suppressWallpaperTransition = true;
                 open(settingsKeyPanel ? new Intent(this, QuickSettingsActivity.class)
                         : systemIntent(Settings.ACTION_SETTINGS));
             }
@@ -3671,10 +3703,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         addInputRow(rows, popup, R.drawable.ic_swap_vert, getString(R.string.reorder), -1, this::toggleReorder);
         if (launcherSettingsButton) {
             addInputRow(rows, popup, R.drawable.ic_home_settings_pill, getString(R.string.launcher_settings), -1,
-                    () -> startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+                    () -> {
+                        suppressWallpaperTransition = true;
+                        startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST);
+                    });
         } else {
             addInputRow(rows, popup, R.drawable.ic_settings, getString(R.string.settings), -1,
-                    () -> open(systemIntent(Settings.ACTION_SETTINGS)));
+                    () -> {
+                        suppressWallpaperTransition = true;
+                        open(systemIntent(Settings.ACTION_SETTINGS));
+                    });
         }
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max((int) (220 * density), Math.min(panel.getMeasuredWidth(), (int) (360 * density))));
@@ -3688,8 +3726,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
         PopupWindow popup = glassPopup(panel, (int) (200 * density));
-        if (!launcherSettingsButton) addSettingsMenuRow(rows, popup, R.string.launcher_settings, () -> startActivityForResult(
-                new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+        if (!launcherSettingsButton) addSettingsMenuRow(rows, popup, R.string.launcher_settings, () -> {
+            suppressWallpaperTransition = true;
+            startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST);
+        });
         // Firmware that ships its own settings app next to the AOSP one (Xiaomi China is one): the
         // vendor app holds pages the AOSP settings has no row for, such as Account & Security with
         // the ADB switch. Offered here only while one of them is installed.

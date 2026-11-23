@@ -62,7 +62,7 @@ final class WallpaperPlayer {
     private LocalDate sunDay;
     private int[] sun;
 
-    WallpaperPlayer(Context context, FrameLayout root, Config config) {
+    WallpaperPlayer(Context context, FrameLayout root, Config config, boolean rotateOnStart) {
         this.root = root;
         backgroundColor = config.backgroundColor;
         files = new ArrayList<>(config.wallpapers);
@@ -94,7 +94,7 @@ final class WallpaperPlayer {
         if (config.wallpaperEnabled && !files.isEmpty()) {
             root.addView(image, 0, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            showFirst();
+            showFirst(rotateOnStart);
         }
     }
 
@@ -103,11 +103,11 @@ final class WallpaperPlayer {
      * Home's first frame already has it instead of drawing the plain colour and the picture popping in later.
      * Only the later changes of a rotation decode in the background.
      */
-    private void showFirst() {
+    private void showFirst(boolean rotateOnStart) {
         String previous = preferences.getString("image", "");
         List<File> playable = playable();
         File first = WallpaperRotation.find(playable, previous);
-        if (first == null) first = WallpaperRotation.pick(playable, previous, order, random);
+        if (rotateOnStart || first == null) first = WallpaperRotation.pick(playable, previous, order, random);
         while (first != null) {
             Bitmap bitmap = decode(first);
             if (bitmap != null) {
@@ -129,8 +129,45 @@ final class WallpaperPlayer {
     }
 
     void start() {
+        start(false);
+    }
+
+    /** Starts playback; a real foreground transition may pick once immediately. Timed playback stays in update(). */
+    void start(boolean rotateOnForeground) {
         active = true;
-        update();
+        if (rotateOnForeground) rotateOnForeground();
+        else update();
+    }
+
+    /** Changes to another picture when Home becomes foreground again, never repeating the displayed picture. */
+    void rotateOnForeground() {
+        if (!active || closed || loading || files.isEmpty()) return;
+        List<File> playable = playable();
+        if (playable.isEmpty()) return;
+        String previous = !displayed.isEmpty() ? displayed : preferences.getString("image", "");
+        File next = WallpaperRotation.pick(playable, previous, order, random);
+        if (next == null || next.getName().equals(displayed)) return;
+        loading = true;
+        decoder.execute(() -> {
+            Bitmap bitmap = decode(next);
+            root.post(() -> {
+                loading = false;
+                if (closed || !active) {
+                    if (bitmap != null) bitmap.recycle();
+                    return;
+                }
+                if (bitmap == null) {
+                    files.remove(next);
+                    Log.w("TvHome.Wallpaper", "Skipping unreadable image: " + next.getName());
+                    return;
+                }
+                show(bitmap);
+                displayed = next.getName();
+                showCaption(true);
+                preferences.edit().putString("image", displayed)
+                        .putLong("changed", System.currentTimeMillis()).apply();
+            });
+        });
     }
 
     void stop() {
